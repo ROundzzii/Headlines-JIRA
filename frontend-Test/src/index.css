@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #f9fafb;
+    --text: #111827;
+    --muted: #6b7280;
+    --surface: #ffffff;
+    --surface-2: #f3f4f6;
+    --border: #e5e7eb;
+    --primary: #2563eb;
+    --success: #16a34a;
+    --warning: #f59e0b;
+    --danger: #dc2626;
+    --info: #2563eb;
+    --link: #2563eb;
+    --icon: #6b7280;
+    --icon-muted: #9ca3af;
+
+    --chip-gray-bg: #e5e7eb;
+    --chip-gray-text: #374151;
+    --chip-blue-bg: #dbeafe;
+    --chip-blue-text: #1d4ed8;
+    --chip-green-bg: #dcfce7;
+    --chip-green-text: #166534;
+    --chip-yellow-bg: #fef9c3;
+    --chip-yellow-text: #854d0e;
+    --chip-orange-bg: #ffedd5;
+    --chip-orange-text: #9a3412;
+    --chip-purple-bg: #ede9fe;
+    --chip-purple-text: #6d28d9;
+  }
+
+  .dark {
+    --bg: #0f172a;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --surface: #111827;
+    --surface-2: #1f2937;
+    --border: #374151;
+    --primary: #60a5fa;
+    --success: #22c55e;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #60a5fa;
+    --link: #93c5fd;
+    --icon: #d1d5db;
+    --icon-muted: #9ca3af;
+
+    --chip-gray-bg: rgba(156, 163, 175, 0.2);
+    --chip-gray-text: #e5e7eb;
+    --chip-blue-bg: rgba(59, 130, 246, 0.2);
+    --chip-blue-text: #93c5fd;
+    --chip-green-bg: rgba(34, 197, 94, 0.2);
+    --chip-green-text: #86efac;
+    --chip-yellow-bg: rgba(234, 179, 8, 0.2);
+    --chip-yellow-text: #fde68a;
+    --chip-orange-bg: rgba(249, 115, 22, 0.2);
+    --chip-orange-text: #fdba74;
+    --chip-purple-bg: rgba(147, 51, 234, 0.2);
+    --chip-purple-text: #c4b5fd;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
+  }
+  
+  .btn-primary {
+    @apply btn px-4 py-2;
+    background-color: var(--primary);
+    color: white;
+  }
+  
+  .btn-secondary {
+    @apply btn px-4 py-2;
+    background-color: var(--surface-2);
+    color: var(--text);
+  }
+  
+  .btn-outline {
+    @apply btn border px-4 py-2;
+    border-color: var(--border);
+    background-color: var(--surface);
+    color: var(--text);
+  }
+  
+  .input {
+    @apply flex h-10 w-full rounded-md px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    border: 1px solid var(--border);
+    background-color: var(--surface);
+    color: var(--text);
+  }
+  
+  .card {
+    @apply rounded-lg shadow-sm;
+    border: 1px solid var(--border);
+    background-color: var(--surface);
+    color: var(--text);
+  }
+  
+  .card-header {
+    @apply flex flex-col space-y-1.5 p-6;
+  }
+  
+  .card-content {
+    @apply p-6;
+  }
+
+  .surface {
+    background-color: var(--surface);
+    color: var(--text);
+  }
+  .surface-2 {
+    background-color: var(--surface-2);
+    color: var(--text);
+  }
+  .text-muted {
+    color: var(--muted);
+  }
+
+  .bg-app { background-color: var(--app-bg); }
+  .border-default { border-color: var(--border) !important; }
+  .link { color: var(--link); }
+  .icon { color: var(--icon); }
+  .icon-muted { color: var(--icon-muted); }
+  .icon-primary { color: var(--primary); }
+  .icon-success { color: var(--success); }
+  .icon-warning { color: var(--warning); }
+  .icon-danger { color: var(--danger); }
+  .icon-info { color: var(--info); }
+  .text-error { color: var(--danger); }
+
+  .chip {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .chip-gray { background-color: var(--chip-gray-bg); color: var(--chip-gray-text); }
+  .chip-blue { background-color: var(--chip-blue-bg); color: var(--chip-blue-text); }
+  .chip-green { background-color: var(--chip-green-bg); color: var(--chip-green-text); }
+  .chip-yellow { background-color: var(--chip-yellow-bg); color: var(--chip-yellow-text); }
+  .chip-orange { background-color: var(--chip-orange-bg); color: var(--chip-orange-text); }
+  .chip-purple { background-color: var(--chip-purple-bg); color: var(--chip-purple-text); }
+  .badge { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium; }
+  .badge-gray { background-color: var(--chip-gray-bg); color: var(--chip-gray-text); }
+  .badge-blue { background-color: var(--chip-blue-bg); color: var(--chip-blue-text); }
+  .badge-green { background-color: var(--chip-green-bg); color: var(--chip-green-text); }
+  .badge-yellow { background-color: var(--chip-yellow-bg); color: var(--chip-yellow-text); }
+  .badge-orange { background-color: var(--chip-orange-bg); color: var(--chip-orange-text); }
+  .badge-purple { background-color: var(--chip-purple-bg); color: var(--chip-purple-text); }
+}
