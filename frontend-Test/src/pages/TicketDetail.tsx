@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
@@ -6,12 +7,18 @@ import {
   Edit, 
   MessageSquare, 
   Paperclip, 
-  User
+  User,
+  Send
 } from 'lucide-react'
 import { ticketService } from '../services/ticketService'
+import EditTicketModal from '../components/EditTicketModal'
+import { useNotificationStore } from '../stores/notificationStore'
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>()
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const { addNotification } = useNotificationStore()
 
   const { data: ticket, isLoading } = useQuery(['ticket', id], async () => {
     if (!id) throw new Error('Ticket ID is required')
@@ -80,7 +87,10 @@ export default function TicketDetail() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{ticket.title}</h1>
           <p className="text-gray-500">#{ticket.id}</p>
         </div>
-        <button className="btn-outline">
+        <button 
+          className="btn-outline"
+          onClick={() => setIsEditModalOpen(true)}
+        >
           <Edit className="h-4 w-4 mr-2" />
           Modifier
         </button>
@@ -287,10 +297,28 @@ export default function TicketDetail() {
               <h3 className="text-lg font-medium text-gray-900">Actions</h3>
             </div>
             <div className="card-content space-y-2">
-              <button className="btn-outline w-full">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Ajouter un commentaire
-              </button>
+              <div className="space-y-2">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  className="input w-full text-sm"
+                  placeholder="Ajouter un commentaire..."
+                  rows={3}
+                />
+                <button 
+                  className="btn-outline w-full"
+                  onClick={async () => {
+                    if (newComment.trim()) {
+                      addNotification('Commentaire ajouté (mode démo)', 'info')
+                      setNewComment('')
+                    }
+                  }}
+                  disabled={!newComment.trim()}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Envoyer
+                </button>
+              </div>
               <button className="btn-outline w-full">
                 <Paperclip className="h-4 w-4 mr-2" />
                 Joindre un fichier
@@ -303,6 +331,12 @@ export default function TicketDetail() {
           </div>
         </div>
       </div>
+
+      <EditTicketModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        ticket={ticket || null}
+      />
     </div>
   )
 }

@@ -1,14 +1,34 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Search, Filter, Ticket } from 'lucide-react'
 import { useTicketStore } from '../stores/dataStore'
+import CreateTicketModal from '../components/CreateTicketModal'
 
 export default function Tickets() {
   const { tickets, isLoading, fetchTickets } = useTicketStore()
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [filterPriority, setFilterPriority] = useState<string>('all')
+  const [filterType, setFilterType] = useState<string>('all')
 
   useEffect(() => {
     fetchTickets()
   }, [fetchTickets])
+
+  // Filtrage des tickets
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesSearch = searchQuery === '' || 
+      ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    const matchesStatus = filterStatus === 'all' || ticket.status === filterStatus
+    const matchesPriority = filterPriority === 'all' || ticket.priority === filterPriority
+    const matchesType = filterType === 'all' || ticket.type === filterType
+
+    return matchesSearch && matchesStatus && matchesPriority && matchesType
+  })
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -61,7 +81,10 @@ export default function Tickets() {
           <h1 className="text-2xl font-bold">Tickets</h1>
           <p className="text-muted">Gérez vos tickets et tâches</p>
         </div>
-        <button className="btn btn-primary">
+        <button 
+          className="btn btn-primary"
+          onClick={() => setIsModalOpen(true)}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Nouveau ticket
         </button>
@@ -78,10 +101,15 @@ export default function Tickets() {
                   type="text"
                   placeholder="Rechercher des tickets..."
                   className="input pl-10 w-full"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
             </div>
-            <button className="btn btn-outline">
+            <button 
+              className="btn btn-outline"
+              onClick={() => setShowFilters(!showFilters)}
+            >
               <Filter className="h-4 w-4 mr-2" />
               Filtres
             </button>
@@ -89,10 +117,84 @@ export default function Tickets() {
         </div>
       </div>
 
+      {/* Filtres */}
+      {showFilters && (
+        <div className="card">
+          <div className="card-content">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  Statut
+                </label>
+                <select 
+                  className="input w-full"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="all">Tous</option>
+                  <option value="To Do">À faire</option>
+                  <option value="In Progress">En cours</option>
+                  <option value="Done">Terminé</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  Priorité
+                </label>
+                <select 
+                  className="input w-full"
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                >
+                  <option value="all">Tous</option>
+                  <option value="low">Faible</option>
+                  <option value="medium">Moyenne</option>
+                  <option value="high">Haute</option>
+                  <option value="critical">Critique</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  Type
+                </label>
+                <select 
+                  className="input w-full"
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                >
+                  <option value="all">Tous</option>
+                  <option value="task">Tâche</option>
+                  <option value="bug">Bug</option>
+                  <option value="feature">Fonctionnalité</option>
+                  <option value="epic">Epic</option>
+                </select>
+              </div>
+            </div>
+
+            {(filterStatus !== 'all' || filterPriority !== 'all' || filterType !== 'all') && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => {
+                    setFilterStatus('all')
+                    setFilterPriority('all')
+                    setFilterType('all')
+                  }}
+                  className="text-sm text-primary-600 hover:text-primary-700"
+                >
+                  Réinitialiser les filtres
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Liste des tickets */}
-      {tickets.length > 0 ? (
+      {filteredTickets.length > 0 ? (
         <div className="space-y-4">
-          {tickets.map((ticket) => (
+          {filteredTickets.map((ticket) => (
             <div key={ticket.id} className="card hover:shadow-md transition-shadow">
               <div className="card-content">
                 <div className="flex items-start justify-between">
@@ -140,18 +242,30 @@ export default function Tickets() {
       ) : (
         <div className="text-center py-12">
           <Ticket className="mx-auto h-12 w-12 icon-muted" />
-          <h3 className="mt-2 text-sm font-medium">Aucun ticket</h3>
+          <h3 className="mt-2 text-sm font-medium">
+            {tickets.length === 0 ? 'Aucun ticket' : 'Aucun ticket trouvé'}
+          </h3>
           <p className="mt-1 text-sm text-muted">
-            Commencez par créer votre premier ticket.
+            {tickets.length === 0 
+              ? 'Commencez par créer votre premier ticket.'
+              : 'Essayez de modifier vos critères de recherche ou de filtrage.'}
           </p>
           <div className="mt-6">
-            <button className="btn btn-primary">
+            <button 
+              className="btn btn-primary"
+              onClick={() => setIsModalOpen(true)}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Créer un ticket
             </button>
           </div>
         </div>
       )}
+      
+      <CreateTicketModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   )
 }

@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, FolderOpen, Users, Calendar } from 'lucide-react'
 import { useProjectStore } from '../stores/dataStore'
+import CreateProjectModal from '../components/CreateProjectModal'
 
 export default function Projects() {
   const { projects, isLoading, fetchProjects } = useProjectStore()
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     fetchProjects()
@@ -36,7 +38,10 @@ export default function Projects() {
           <h1 className="text-2xl font-bold">Projets</h1>
           <p className="text-muted">Gérez vos projets et équipes</p>
         </div>
-        <button className="btn btn-primary">
+        <button 
+          className="btn btn-primary"
+          onClick={() => setIsModalOpen(true)}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Nouveau projet
         </button>
@@ -102,13 +107,21 @@ export default function Projects() {
             Commencez par créer votre premier projet.
           </p>
           <div className="mt-6">
-            <button className="btn btn-primary">
+            <button 
+              className="btn btn-primary"
+              onClick={() => setIsModalOpen(true)}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Créer un projet
             </button>
           </div>
         </div>
       )}
+      
+      <CreateProjectModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   )
 }

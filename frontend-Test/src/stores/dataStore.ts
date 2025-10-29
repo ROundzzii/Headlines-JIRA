@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { Project, Ticket } from '../types'
 import { projectService } from '../services/projectService'
 import { ticketService } from '../services/ticketService'
+import { devtools } from 'zustand/middleware'
 
 interface ProjectStore {
   projects: Project[]
@@ -12,30 +13,35 @@ interface ProjectStore {
   setCurrentProject: (project: Project | null) => void
 }
 
-export const useProjectStore = create<ProjectStore>((set, get) => ({
-  projects: [],
-  currentProject: null,
-  isLoading: false,
+export const useProjectStore = create<ProjectStore>()(
+  devtools(
+    (set, get) => ({
+      projects: [],
+      currentProject: null,
+      isLoading: false,
 
-  fetchProjects: async () => {
-    set({ isLoading: true })
-    try {
-      const projects = await projectService.getProjects()
-      set({ projects, isLoading: false })
-    } catch (error) {
-      console.error('Erreur lors du chargement des projets:', error)
-      set({ isLoading: false })
-    }
-  },
+      fetchProjects: async () => {
+        set({ isLoading: true })
+        try {
+          const projects = await projectService.getProjects()
+          set({ projects, isLoading: false })
+        } catch (error) {
+          console.error('Erreur lors du chargement des projets:', error)
+          set({ isLoading: false })
+        }
+      },
 
-  getProject: (id: number) => {
-    return get().projects.find(project => project.id === id)
-  },
+      getProject: (id: number) => {
+        return get().projects.find(project => project.id === id)
+      },
 
-  setCurrentProject: (project: Project | null) => {
-    set({ currentProject: project })
-  },
-}))
+      setCurrentProject: (project: Project | null) => {
+        set({ currentProject: project })
+      },
+    }),
+    { name: 'ProjectStore' } // Nom pour les DevTools
+  )
+)
 
 interface TicketStore {
   tickets: Ticket[]
@@ -131,5 +137,14 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
     }
   },
 }))
+
+
+if (process.env.NODE_ENV === 'development') {
+  (window as any).stores = {
+    projects: useProjectStore,
+    tickets: useTicketStore,
+    dashboard: useDashboardStore
+  }
+}
 
 

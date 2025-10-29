@@ -10,12 +10,14 @@ import {
 } from 'lucide-react'
 import { useProjectStore, useTicketStore } from '../stores/dataStore'
 import { useEffect, useState } from 'react'
+import ProjectSettingsModal from '../components/ProjectSettingsModal'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const { getProject } = useProjectStore()
   const { fetchTickets, tickets } = useTicketStore()
   const [isLoading, setIsLoading] = useState(true)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const project = id ? getProject(parseInt(id)) : null
 
@@ -85,7 +87,10 @@ export default function ProjectDetail() {
               )}
             </div>
             <div className="flex space-x-2">
-              <button className="btn-outline">
+              <button 
+                className="btn-outline"
+                onClick={() => setIsSettingsOpen(true)}
+              >
                 <Settings className="h-4 w-4 mr-2" />
                 Paramètres
               </button>
@@ -215,6 +220,12 @@ export default function ProjectDetail() {
           )}
         </div>
       </div>
+
+      <ProjectSettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        project={project}
+      />
     </div>
   )
 }

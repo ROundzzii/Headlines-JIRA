@@ -13,6 +13,10 @@ import KanbanBoard from './pages/KanbanBoard'
 import Settings from './pages/Settings'
 import { useAuthStore } from './stores/authStore'
 import { ThemeProvider } from './components/ThemeProvider'
+import Toast from './components/Toast'
+import { useProjectStore } from './stores/dataStore'
+import { useTicketStore } from './stores/dataStore'
+import { useNotificationStore } from './stores/notificationStore'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
@@ -43,6 +47,7 @@ function App() {
           </Routes>
         )}
       </div>
+      <Toast />
       </ThemeProvider>
     </DndProvider>
   )

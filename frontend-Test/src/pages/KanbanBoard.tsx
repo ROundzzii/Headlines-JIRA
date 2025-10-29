@@ -1,10 +1,138 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Ticket, User } from 'lucide-react'
+import { useDrag, useDrop } from 'react-dnd'
 import { useTicketStore } from '../stores/dataStore'
+import CreateTicketModal from '../components/CreateTicketModal'
+import { useNotificationStore } from '../stores/notificationStore'
+
+const getPriorityColor = (priority: string) => {
+  switch (priority) {
+    case 'high':
+    case 'High':
+      return 'border-l-red-500'
+    case 'medium':
+    case 'Medium':
+      return 'border-l-yellow-500'
+    case 'low':
+    case 'Low':
+      return 'border-l-green-500'
+    default:
+      return 'border-l-gray-500'
+  }
+}
+
+interface TicketCardProps {
+  ticket: any
+}
+
+function TicketCard({ ticket }: TicketCardProps) {
+  const [{ isDragging }, drag] = useDrag({
+    type: 'ticket',
+    item: { id: ticket.id, currentStatus: ticket.status },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  })
+
+  return (
+    <div
+      ref={drag}
+      className={`card border-l-4 ${getPriorityColor(ticket.priority)} hover:shadow-md transition-all cursor-move ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+    >
+      <div className="card-content">
+        <Link to={`/tickets/${ticket.id}`} className="block">
+          <div className="flex items-start justify-between mb-2">
+            <h4 className="text-sm font-medium line-clamp-2">
+              {ticket.title}
+            </h4>
+            <span className="text-xs text-muted ml-2">
+              #{ticket.id}
+            </span>
+          </div>
+          
+          <p className="text-xs text-muted mb-3 line-clamp-2">
+            {ticket.description}
+          </p>
+
+          <div className="flex items-center justify-between text-xs text-muted">
+            <div className="flex items-center">
+              <Ticket className="h-3 w-3 mr-1 icon" />
+              <span>{ticket.type}</span>
+            </div>
+            <div className="flex items-center">
+              <User className="h-3 w-3 mr-1 icon" />
+              <span>Assigné</span>
+            </div>
+          </div>
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+interface ColumnProps {
+  column: { id: string; title: string }
+  tickets: any[]
+}
+
+function Column({ column, tickets }: ColumnProps) {
+  const { updateTicketStatus } = useTicketStore()
+  const { addNotification } = useNotificationStore()
+
+  const [{ isOver }, drop] = useDrop({
+    accept: 'ticket',
+    drop: async (item: { id: number; currentStatus: string }) => {
+      if (item.currentStatus !== column.id) {
+        try {
+          await updateTicketStatus(item.id, column.id)
+          addNotification(`Ticket déplacé vers "${column.title}"`, 'success')
+        } catch (error) {
+          addNotification('Erreur lors du déplacement du ticket', 'error')
+        }
+      }
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  })
+
+  return (
+    <div ref={drop} className="card">
+      <div className={`card-header surface-2 ${isOver ? 'bg-blue-100 dark:bg-blue-900/20' : ''}`}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-medium">
+            {column.title}
+          </h3>
+          <span className="chip chip-gray">
+            {tickets.length}
+          </span>
+        </div>
+      </div>
+      
+      <div className="card-content">
+        <div className="space-y-3">
+          {tickets.map((ticket) => (
+            <TicketCard key={ticket.id} ticket={ticket} />
+          ))}
+          
+          {tickets.length === 0 && (
+            <div className="text-center py-8 text-muted">
+              <Ticket className="mx-auto h-8 w-8 mb-2 opacity-50 icon-muted" />
+              <p className="text-sm">Aucun ticket</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function KanbanBoard() {
   const { tickets, isLoading, fetchTickets } = useTicketStore()
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     fetchTickets()
@@ -18,19 +146,6 @@ export default function KanbanBoard() {
 
   const getTicketsByStatus = (status: string) => {
     return tickets.filter(ticket => ticket.status === status)
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High':
-        return 'border-l-red-500'
-      case 'Medium':
-        return 'border-l-yellow-500'
-      case 'Low':
-        return 'border-l-green-500'
-      default:
-        return 'border-l-gray-500'
-    }
   }
 
   if (isLoading) {
@@ -62,7 +177,10 @@ export default function KanbanBoard() {
           <h1 className="text-2xl font-bold">Tableau Kanban</h1>
           <p className="text-muted">Visualisez vos tickets par statut</p>
         </div>
-        <button className="btn btn-primary">
+        <button 
+          className="btn btn-primary"
+          onClick={() => setIsModalOpen(true)}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Nouveau ticket
         </button>
@@ -71,91 +189,19 @@ export default function KanbanBoard() {
       {/* Colonnes Kanban */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {columns.map((column) => (
-          <div key={column.id} className="card">
-            <div className={`card-header surface-2`}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">
-                  {column.title}
-                </h3>
-                <span className="chip chip-gray">
-                  {getTicketsByStatus(column.id).length}
-                </span>
-              </div>
-            </div>
-            
-            <div className="card-content">
-              <div className="space-y-3">
-                {getTicketsByStatus(column.id).map((ticket) => (
-                  <div
-                    key={ticket.id}
-                    className={`card border-l-4 ${getPriorityColor(ticket.priority)} hover:shadow-md transition-shadow cursor-pointer`}
-                  >
-                    <div className="card-content">
-                      <Link
-                        to={`/tickets/${ticket.id}`}
-                        className="block"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className="text-sm font-medium line-clamp-2">
-                            {ticket.title}
-                          </h4>
-                          <span className="text-xs text-muted ml-2">
-                            #{ticket.id}
-                          </span>
-                        </div>
-                        
-                        <p className="text-xs text-muted mb-3 line-clamp-2">
-                          {ticket.description}
-                        </p>
-
-                        <div className="flex items-center justify-between text-xs text-muted">
-                          <div className="flex items-center">
-                            <Ticket className="h-3 w-3 mr-1 icon" />
-                            <span>{ticket.type}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <User className="h-3 w-3 mr-1 icon" />
-                            <span>Assigné</span>
-                          </div>
-                        </div>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-                
-                {getTicketsByStatus(column.id).length === 0 && (
-                  <div className="text-center py-8 text-muted">
-                    <Ticket className="mx-auto h-8 w-8 mb-2 opacity-50 icon-muted" />
-                    <p className="text-sm">Aucun ticket</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <Column
+            key={column.id}
+            column={column}
+            tickets={getTicketsByStatus(column.id)}
+          />
         ))}
       </div>
 
-      {/* Instructions pour le mode démo */}
-      <div className="card">
-        <div className="card-content">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <div className="h-8 w-8 rounded-full surface-2 flex items-center justify-center">
-                <Ticket className="h-4 w-4 icon-info" />
-              </div>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium">
-                Mode démo - Tableau Kanban
-              </h3>
-              <p className="text-sm text-muted mt-1">
-                Dans le mode complet, vous pourrez glisser-déposer les tickets entre les colonnes 
-                pour changer leur statut. Explorez les autres pages pour voir toutes les fonctionnalités !
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      
+      <CreateTicketModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   )
 }
