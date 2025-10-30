@@ -185,11 +185,19 @@ Ce projet est une reproduction du frontend de JIRA, développé avec React + Typ
 
 #### 2. Assignation de tickets 👥
 **Description**: Permettre d'assigner des tickets à des utilisateurs
-- [ ] Sélecteur d'utilisateurs avec liste déroulante
-- [ ] Dropdown avec recherche (filtrage côté frontend)
-- [ ] Avatar des utilisateurs avec initiales
-- [ ] Badge d'assignation visible
-- [ ] Utilisation des données mockées pour les utilisateurs
+- [x] Sélecteur d'utilisateurs avec liste déroulante
+- [x] Dropdown avec recherche (filtrage côté frontend)
+- [x] Avatar des utilisateurs avec initiales
+- [x] Badge d'assignation visible
+- [x] Utilisation des données mockées pour les utilisateurs
+
+Recommandations (à faire plus tard):
+- Accessibilité: rôles/aria-labels, focus trap des modales, retour focus à la fermeture
+- UX sélecteur: navigation clavier complète (↑/↓/Enter/Échap) et item sélectionné en tête avec check
+- Recherche: debounce (150 ms) et highlight des termes dans nom/email (implémentés en partie)
+- Chargement: spinner visuel dans le dropdown (implémenté)
+- Données: cache `users` en localStorage avec TTL (ex. 24h)
+- Performance: mémoïser `UserAvatar`/`AssigneeBadge` si liste volumineuse
 
 **Fichiers à créer**:
 - `src/components/UserSelector.tsx`

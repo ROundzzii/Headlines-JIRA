@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
+import { useQueryClient } from 'react-query'
 import Modal from './Modal'
 import { Ticket } from '../types'
 import { useTicketStore } from '../stores/dataStore'
 import { useProjectStore } from '../stores/dataStore'
 import { useNotificationStore } from '../stores/notificationStore'
 import { ticketService } from '../services/ticketService'
+import UserSelector from './UserSelector'
+import { useUserStore } from '../stores/dataStore'
 
 interface EditTicketModalProps {
   isOpen: boolean
@@ -21,6 +24,7 @@ interface TicketFormData {
   status: string
   project_id: number
   tags: string
+  assignee_id?: number | null
 }
 
 export default function EditTicketModal({ isOpen, onClose, ticket }: EditTicketModalProps) {
@@ -29,10 +33,14 @@ export default function EditTicketModal({ isOpen, onClose, ticket }: EditTicketM
   const { addNotification } = useNotificationStore()
   const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm<TicketFormData>()
   const [isLoading, setIsLoading] = useState(false)
+  const { users, fetchUsers } = useUserStore()
+  const queryClient = useQueryClient()
+  const [assigneeIdDraft, setAssigneeIdDraft] = useState<number | null>(null)
 
   useEffect(() => {
     if (isOpen && ticket) {
       fetchProjects()
+      if (!users.length) fetchUsers()
       setValue('title', ticket.title)
       setValue('description', ticket.description || '')
       setValue('type', ticket.type)
@@ -40,8 +48,11 @@ export default function EditTicketModal({ isOpen, onClose, ticket }: EditTicketM
       setValue('status', ticket.status)
       setValue('project_id', ticket.project_id)
       setValue('tags', ticket.tags.join(', '))
+      const initialAssignee = ticket.assignee_id ?? null
+      setAssigneeIdDraft(initialAssignee)
+      setValue('assignee_id', initialAssignee)
     }
-  }, [isOpen, ticket, setValue, fetchProjects])
+  }, [isOpen, ticket, setValue, fetchProjects, users.length, fetchUsers])
 
   const onSubmit = async (data: TicketFormData) => {
     if (!ticket) return
@@ -56,6 +67,11 @@ export default function EditTicketModal({ isOpen, onClose, ticket }: EditTicketM
       }
       
       await ticketService.updateTicket(ticket.id, ticketData)
+      if (data.assignee_id !== undefined) {
+        const updated = await ticketService.assignTicket(ticket.id, data.assignee_id ?? ticket.assignee_id ?? 1)
+        // Synchroniser le cache du ticket si ouvert en détail
+        queryClient.setQueryData(['ticket', String(ticket.id)], (old: any) => ({ ...(old || {}), assignee_id: updated.assignee_id, assignee: updated.assignee, updated_at: updated.updated_at }))
+      }
       addNotification('Ticket modifié avec succès !', 'success')
       await fetchTickets()
       onClose()
@@ -84,6 +100,16 @@ export default function EditTicketModal({ isOpen, onClose, ticket }: EditTicketM
           {errors.title && (
             <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
           )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+            Assigné à
+          </label>
+          <UserSelector
+            value={assigneeIdDraft}
+            onChange={(userId) => { setAssigneeIdDraft(userId); setValue('assignee_id', userId) }}
+          />
         </div>
 
         <div>

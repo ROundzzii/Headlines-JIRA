@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Plus, Search, Filter, Ticket } from 'lucide-react'
 import { useTicketStore } from '../stores/dataStore'
 import CreateTicketModal from '../components/CreateTicketModal'
+import AssigneeBadge from '../components/AssigneeBadge'
 
 export default function Tickets() {
   const { tickets, isLoading, fetchTickets } = useTicketStore()
@@ -233,6 +234,7 @@ export default function Tickets() {
                     <span className={`${getPriorityColor(ticket.priority)}`}>
                       {ticket.priority}
                     </span>
+                    <AssigneeBadge user={ticket.assignee} />
                   </div>
                 </div>
               </div>

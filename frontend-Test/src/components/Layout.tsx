@@ -17,6 +17,7 @@ import {
 import { useState } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useTheme } from '../hooks/useTheme'
+import UserAvatar from './UserAvatar'
 
 interface LayoutProps {
   children: ReactNode
@@ -100,13 +101,7 @@ export default function Layout({ children }: LayoutProps) {
           </nav>
           <div className="border-t border-gray-200 p-4 dark:border-gray-700">
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="h-8 w-8 rounded-full bg-primary-500 flex items-center justify-center">
-                  <span className="text-sm font-medium text-white">
-                    {user?.full_name?.charAt(0) || 'U'}
-                  </span>
-                </div>
-              </div>
+              <div className="flex-shrink-0"><UserAvatar user={user || undefined} size={28} /></div>
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{user?.full_name}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role}</p>

@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery } from 'react-query'
+import { useQuery, useQueryClient } from 'react-query'
 import { Link } from 'react-router-dom'
 import { 
   ArrowLeft, 
   Edit, 
   MessageSquare, 
   Paperclip, 
-  User,
   FileText,
   Send
 } from 'lucide-react'
@@ -19,6 +18,9 @@ import FileUploader from '../components/FileUploader'
 import { isPreviewableImage, isPreviewablePdf } from '../utils/mime'
 import { useUpload } from '../hooks/useUpload'
 import Modal from '../components/Modal'
+import UserSelector from '../components/UserSelector'
+import AssigneeBadge from '../components/AssigneeBadge'
+import { useUserStore } from '../stores/dataStore'
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>()
@@ -30,10 +32,13 @@ export default function TicketDetail() {
     if (!id) throw new Error('Ticket ID is required')
     return await ticketService.getTicket(parseInt(id))
   })
+  const queryClient = useQueryClient()
 
   const ticketId = useMemo(() => (ticket ? ticket.id : id ? parseInt(id) : undefined), [ticket, id])
-  const { removeAttachment, addTempAttachment, updateAttachmentProgress, finalizeTempAttachment, failTempAttachment } = useTicketStore()
+  const { removeAttachment, addTempAttachment, updateAttachmentProgress, finalizeTempAttachment, failTempAttachment, setTicketAssignee } = useTicketStore()
   const { upload, errorMap, clearState, progressMap } = useUpload()
+  const users = useUserStore(s => s.users)
+  const fetchUsers = useUserStore(s => s.fetchUsers)
   const attachments = useTicketStore((s) =>
     ticketId
       ? (s.attachmentsByTicket[ticketId] ?? ticket?.attachments ?? [])
@@ -41,6 +46,7 @@ export default function TicketDetail() {
   )
   const [uploaderApi, setUploaderApi] = useState<{ open: () => void } | null>(null)
   const [preview, setPreview] = useState<{ url: string; mime: string; name: string } | null>(null)
+  const [showAssignModal, setShowAssignModal] = useState(false)
   const [batchTempIds, setBatchTempIds] = useState<string[]>([])
 
   // Synchroniser la progression depuis le hook vers le store
@@ -50,6 +56,10 @@ export default function TicketDetail() {
       updateAttachmentProgress(ticketId, tid, p)
     })
   }, [progressMap, ticketId, updateAttachmentProgress])
+
+  useEffect(() => {
+    if (!users.length) fetchUsers()
+  }, [users.length, fetchUsers])
 
   if (isLoading) {
     return (
@@ -340,29 +350,27 @@ export default function TicketDetail() {
 
               <div>
                 <label className="text-sm font-medium text-gray-500">Créé par</label>
-                <div className="mt-1 flex items-center space-x-2">
-                  <div className="h-6 w-6 rounded-full bg-primary-100 flex items-center justify-center">
-                    <span className="text-xs font-medium text-primary-700">
-                      {ticket.creator?.full_name?.charAt(0) || 'U'}
-                    </span>
-                  </div>
-                  <span className="text-sm text-gray-900">{ticket.creator?.full_name}</span>
+                <div className="mt-2">
+                  <AssigneeBadge user={ticket.creator} />
                 </div>
               </div>
 
-              {ticket.assignee && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Assigné à</label>
-                  <div className="mt-1 flex items-center space-x-2">
-                    <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center">
-                      <span className="text-xs font-medium text-green-700">
-                        {ticket.assignee.full_name.charAt(0)}
-                      </span>
-                    </div>
-                    <span className="text-sm text-gray-900">{ticket.assignee.full_name}</span>
-                  </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Assigné à</label>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 group"
+                    onClick={() => setShowAssignModal(true)}
+                    title="Changer l'assignation"
+                  >
+                    <AssigneeBadge user={ticket.assignee} />
+                    <span className="text-xs text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Modifier
+                    </span>
+                  </button>
                 </div>
-              )}
+              </div>
 
               <div>
                 <label className="text-sm font-medium text-gray-500">Créé le</label>
@@ -430,8 +438,7 @@ export default function TicketDetail() {
                 <Paperclip className="h-4 w-4 mr-2" />
                 Joindre un fichier
               </button>
-              <button className="btn-outline w-full">
-                <User className="h-4 w-4 mr-2" />
+              <button className="btn-outline w-full" onClick={() => setShowAssignModal(true)}>
                 Assigner à quelqu'un
               </button>
             </div>
@@ -462,6 +469,36 @@ export default function TicketDetail() {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showAssignModal}
+        onClose={() => setShowAssignModal(false)}
+        title="Assigner le ticket"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Assigné actuel</span>
+            <AssigneeBadge user={ticket.assignee} />
+          </div>
+          <UserSelector
+            value={ticket.assignee_id ?? null}
+            onChange={async (userId) => {
+              if (!ticketId) return
+              try {
+                const updated = await ticketService.assignTicket(ticketId, userId ?? users[0]?.id ?? 1)
+                setTicketAssignee(ticketId, { userId: updated.assignee_id ?? null, user: updated.assignee })
+                // Mettre à jour le cache React Query pour refléter immédiatement l'assigné
+                queryClient.setQueryData(['ticket', id], (old: any) => ({ ...(old || {}), assignee_id: updated.assignee_id, assignee: updated.assignee, updated_at: updated.updated_at }))
+                addNotification('Assignation mise à jour', 'success')
+                setShowAssignModal(false)
+              } catch (e) {
+                addNotification("Erreur d'assignation", 'error')
+              }
+            }}
+          />
+        </div>
       </Modal>
     </div>
   )

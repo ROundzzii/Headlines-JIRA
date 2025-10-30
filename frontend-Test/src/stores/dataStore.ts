@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { Attachment, Project, Ticket } from '../types'
+import { Attachment, Project, Ticket, User } from '../types'
 import { projectService } from '../services/projectService'
 import { ticketService } from '../services/ticketService'
+import { userService } from '../services/userService'
 import { devtools } from 'zustand/middleware'
 
 interface ProjectStore {
@@ -52,6 +53,7 @@ interface TicketStore {
   getTicket: (id: number) => Ticket | undefined
   setCurrentTicket: (ticket: Ticket | null) => void
   updateTicketStatus: (ticketId: number, status: string) => void
+  setTicketAssignee: (ticketId: number, assignee: { userId: number | null; user?: any }) => void
   addAttachments: (
     ticketId: number,
     items: Array<{ name: string; size: number; type: string; dataUrl?: string }>,
@@ -66,6 +68,32 @@ interface TicketStore {
   finalizeTempAttachment: (ticketId: number, tempId: string) => void
   failTempAttachment: (ticketId: number, tempId: string, error: string) => void
 }
+interface UserStore {
+  users: User[]
+  isLoadingUsers: boolean
+  fetchUsers: () => Promise<void>
+}
+
+export const useUserStore = create<UserStore>()(
+  devtools(
+    (set) => ({
+      users: [],
+      isLoadingUsers: false,
+      fetchUsers: async () => {
+        set({ isLoadingUsers: true })
+        try {
+          const users = await userService.getUsers()
+          set({ users, isLoadingUsers: false })
+        } catch (err) {
+          console.error('Erreur chargement utilisateurs:', err)
+          set({ isLoadingUsers: false })
+        }
+      },
+    }),
+    { name: 'UserStore' }
+  )
+)
+
 
 function loadAttachmentsFromStorage(): Record<number, Attachment[]> {
   try {
@@ -125,6 +153,30 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
     } catch (error) {
       console.error('Erreur lors de la mise à jour du statut:', error)
     }
+  },
+
+  setTicketAssignee: (ticketId, assignee) => {
+    set(state => ({
+      tickets: state.tickets.map(t =>
+        t.id === ticketId
+          ? {
+              ...t,
+              assignee_id: assignee.userId ?? undefined,
+              assignee: assignee.user ?? undefined,
+              updated_at: new Date().toISOString(),
+            }
+          : t
+      ),
+      currentTicket:
+        state.currentTicket && state.currentTicket.id === ticketId
+          ? {
+              ...state.currentTicket,
+              assignee_id: assignee.userId ?? undefined,
+              assignee: assignee.user ?? undefined,
+              updated_at: new Date().toISOString(),
+            }
+          : state.currentTicket,
+    }))
   },
 
   addAttachments: (ticketId, items, uploadedBy = 1) => {

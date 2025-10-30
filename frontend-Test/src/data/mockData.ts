@@ -12,6 +12,100 @@ export const mockUser: User = {
   updated_at: new Date().toISOString()
 }
 
+export const mockUsers: User[] = [
+  mockUser,
+  {
+    id: 2,
+    email: 'emma.dupont@example.com',
+    username: 'emma',
+    full_name: 'Emma Dupont',
+    is_active: true,
+    role: 'developer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 3,
+    email: 'luc.martin@example.com',
+    username: 'luc',
+    full_name: 'Luc Martin',
+    is_active: true,
+    role: 'project_manager',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 4,
+    email: 'sara.nguyen@example.com',
+    username: 'sara',
+    full_name: 'Sara Nguyen',
+    is_active: true,
+    role: 'developer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 5,
+    email: 'paul.moreau@example.com',
+    username: 'paul',
+    full_name: 'Paul Moreau',
+    is_active: true,
+    role: 'developer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 6,
+    email: 'ines.bernard@example.com',
+    username: 'ines',
+    full_name: 'Inès Bernard',
+    is_active: true,
+    role: 'viewer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 7,
+    email: 'nicolas.renard@example.com',
+    username: 'nicolas',
+    full_name: 'Nicolas Renard',
+    is_active: true,
+    role: 'developer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 8,
+    email: 'lea.perez@example.com',
+    username: 'lea',
+    full_name: 'Léa Perez',
+    is_active: true,
+    role: 'developer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 9,
+    email: 'youssef.kamal@example.com',
+    username: 'youssef',
+    full_name: 'Youssef Kamal',
+    is_active: true,
+    role: 'developer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 10,
+    email: 'julie.roche@example.com',
+    username: 'julie',
+    full_name: 'Julie Roche',
+    is_active: true,
+    role: 'project_manager',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+]
+
 export const mockProjects: Project[] = [
   {
     id: 1,

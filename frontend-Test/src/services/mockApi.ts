@@ -1,10 +1,10 @@
 // In-memory mock API pour tests sans backend
-import { mockUser, mockProjects, mockTickets } from '../data/mockData'
+import { mockUser, mockProjects, mockTickets, mockUsers } from '../data/mockData'
 import { Project, ProjectCreate, Ticket, TicketCreate, User } from '../types'
 
 let projects = [...mockProjects]
 let tickets = [...mockTickets]
-let users: User[] = [mockUser]
+let users: User[] = [...mockUsers]
 let currentToken: string | null = 'demo-token'
 
 const delay = (ms = 300) => new Promise(res => setTimeout(res, ms))
@@ -172,6 +172,11 @@ export const mockApi = {
     const assignee = users.find(u => u.id === assigneeId) ?? mockUser
     tickets = tickets.map(t => (t.id === id ? { ...t, assignee_id: assigneeId, assignee, updated_at: new Date().toISOString() } : t))
     return tickets.find(t => t.id === id)!
+  },
+
+  async getUsers() {
+    await delay()
+    return users
   },
 
   // Méthodes pour les settings

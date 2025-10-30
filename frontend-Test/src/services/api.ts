@@ -20,6 +20,9 @@ export const api = {
   register: mockApi.register,
   me: mockApi.me,
 
+  // Users
+  getUsers: mockApi.getUsers,
+
   // Projects
   getProjects: mockApi.getProjects,
   getProject: mockApi.getProject,
