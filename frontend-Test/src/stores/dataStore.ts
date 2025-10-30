@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Project, Ticket } from '../types'
+import { Attachment, Project, Ticket } from '../types'
 import { projectService } from '../services/projectService'
 import { ticketService } from '../services/ticketService'
 import { devtools } from 'zustand/middleware'
@@ -47,22 +47,52 @@ interface TicketStore {
   tickets: Ticket[]
   currentTicket: Ticket | null
   isLoading: boolean
+  attachmentsByTicket: Record<number, Attachment[]>
   fetchTickets: (projectId?: number) => Promise<void>
   getTicket: (id: number) => Ticket | undefined
   setCurrentTicket: (ticket: Ticket | null) => void
   updateTicketStatus: (ticketId: number, status: string) => void
+  addAttachments: (
+    ticketId: number,
+    items: Array<{ name: string; size: number; type: string; dataUrl?: string }>,
+    uploadedBy?: number
+  ) => void
+  removeAttachment: (ticketId: number, attachmentId: number) => void
+}
+
+function loadAttachmentsFromStorage(): Record<number, Attachment[]> {
+  try {
+    const raw = localStorage.getItem('attachmentsByTicket')
+    return raw ? (JSON.parse(raw) as Record<number, Attachment[]>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveAttachmentsToStorage(map: Record<number, Attachment[]>) {
+  try {
+    localStorage.setItem('attachmentsByTicket', JSON.stringify(map))
+  } catch {
+    // noop
+  }
 }
 
 export const useTicketStore = create<TicketStore>((set, get) => ({
   tickets: [],
   currentTicket: null,
   isLoading: false,
+  attachmentsByTicket: loadAttachmentsFromStorage(),
 
   fetchTickets: async (projectId?: number) => {
     set({ isLoading: true })
     try {
       const tickets = await ticketService.getTickets(projectId)
-      set({ tickets, isLoading: false })
+      const map = get().attachmentsByTicket
+      const merged = tickets.map(t => ({
+        ...t,
+        attachments: map[t.id] ?? t.attachments ?? [],
+      }))
+      set({ tickets: merged, isLoading: false })
     } catch (error) {
       console.error('Erreur lors du chargement des tickets:', error)
       set({ isLoading: false })
@@ -88,6 +118,55 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
     } catch (error) {
       console.error('Erreur lors de la mise à jour du statut:', error)
     }
+  },
+
+  addAttachments: (ticketId, items, uploadedBy = 1) => {
+    const now = new Date().toISOString()
+    const newAttachments: Attachment[] = items.map((it, idx) => ({
+      id: Number(`${Date.now()}${idx}`),
+      filename: it.name,
+      file_path: it.dataUrl || `local:${it.name}`,
+      file_size: it.size,
+      mime_type: it.type || 'application/octet-stream',
+      ticket_id: ticketId,
+      uploaded_by: uploadedBy,
+      created_at: now,
+    }))
+
+    set(state => {
+      const currentList = state.attachmentsByTicket[ticketId] ?? []
+      const updatedMap = { ...state.attachmentsByTicket, [ticketId]: [...newAttachments, ...currentList] }
+      saveAttachmentsToStorage(updatedMap)
+
+      return {
+        attachmentsByTicket: updatedMap,
+        tickets: state.tickets.map(t =>
+          t.id === ticketId ? { ...t, attachments: updatedMap[ticketId] } : t
+        ),
+        currentTicket:
+          state.currentTicket && state.currentTicket.id === ticketId
+            ? { ...state.currentTicket, attachments: updatedMap[ticketId] }
+            : state.currentTicket,
+      }
+    })
+  },
+
+  removeAttachment: (ticketId, attachmentId) => {
+    set(state => {
+      const list = state.attachmentsByTicket[ticketId] ?? []
+      const updated = list.filter(a => a.id !== attachmentId)
+      const updatedMap = { ...state.attachmentsByTicket, [ticketId]: updated }
+      saveAttachmentsToStorage(updatedMap)
+
+      return {
+        attachmentsByTicket: updatedMap,
+        tickets: state.tickets.map(t => (t.id === ticketId ? { ...t, attachments: updated } : t)),
+        currentTicket:
+          state.currentTicket && state.currentTicket.id === ticketId
+            ? { ...state.currentTicket, attachments: updated }
+            : state.currentTicket,
+      }
+    })
   },
 }))
 

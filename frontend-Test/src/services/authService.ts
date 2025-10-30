@@ -1,4 +1,4 @@
-import { mockApi } from './mockApi'
+import { api } from './api'
 import { User } from '../types'
 
 interface LoginResponse {
@@ -15,17 +15,17 @@ interface RegisterData {
 
 export const authService = {
   async login(email: string, password: string): Promise<LoginResponse> {
-    const r = await mockApi.login(email, password)
+    const r = await api.login(email, password)
     return { token: r.access_token, user: r.user }
   },
 
   async register(userData: RegisterData) {
-    const r = await mockApi.register(userData)
+    const r = await api.register(userData)
     return r
   },
 
   async getCurrentUser(): Promise<User> {
-    return await mockApi.me()
+    return await api.me()
   },
 }
 

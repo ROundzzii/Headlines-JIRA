@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
@@ -8,11 +8,17 @@ import {
   MessageSquare, 
   Paperclip, 
   User,
+  FileText,
   Send
 } from 'lucide-react'
 import { ticketService } from '../services/ticketService'
 import EditTicketModal from '../components/EditTicketModal'
 import { useNotificationStore } from '../stores/notificationStore'
+import { useTicketStore } from '../stores/dataStore'
+import FileUploader from '../components/FileUploader'
+import { isPreviewableImage, isPreviewablePdf } from '../utils/mime'
+import { useUpload } from '../hooks/useUpload'
+import Modal from '../components/Modal'
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>()
@@ -24,6 +30,17 @@ export default function TicketDetail() {
     if (!id) throw new Error('Ticket ID is required')
     return await ticketService.getTicket(parseInt(id))
   })
+
+  const ticketId = useMemo(() => (ticket ? ticket.id : id ? parseInt(id) : undefined), [ticket, id])
+  const { addAttachments, removeAttachment } = useTicketStore()
+  const { upload, errorMap, clearState } = useUpload()
+  const attachments = useTicketStore((s) =>
+    ticketId
+      ? (s.attachmentsByTicket[ticketId] ?? ticket?.attachments ?? [])
+      : (ticket?.attachments ?? [])
+  )
+  const [uploaderApi, setUploaderApi] = useState<{ open: () => void } | null>(null)
+  const [preview, setPreview] = useState<{ url: string; mime: string; name: string } | null>(null)
 
   if (isLoading) {
     return (
@@ -161,24 +178,84 @@ export default function TicketDetail() {
               <h3 className="text-lg font-medium text-gray-900">Pièces jointes</h3>
             </div>
             <div className="card-content">
-              {ticket.attachments?.length > 0 ? (
+              <div className="mb-4">
+                <FileUploader
+                  onReady={(api) => setUploaderApi(api)}
+                  onFilesSelected={async (files) => {
+                    if (!ticketId) return
+                    const items = await upload(files, ticketId)
+                    if (items.length) {
+                      addAttachments(ticketId, items.map(i => ({ name: i.name, size: i.size, type: i.type, dataUrl: i.dataUrl })))
+                      addNotification(`${items.length} fichier(s) ajouté(s)`, 'success')
+                      clearState()
+                    }
+                    const errs = Object.values(errorMap)
+                    if (errs.length) {
+                      addNotification(errs[0], 'error')
+                    }
+                  }}
+                />
+              </div>
+
+              {attachments?.length > 0 ? (
                 <div className="space-y-2">
-                  {ticket.attachments.map((attachment: any) => (
-                    <div key={attachment.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <Paperclip className="h-4 w-4 text-gray-400" />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{attachment.filename}</p>
-                          <p className="text-xs text-gray-500">
-                            {(attachment.file_size / 1024).toFixed(1)} KB
-                          </p>
+                  {attachments.map((attachment: any) => {
+                    const isData = typeof attachment.file_path === 'string' && attachment.file_path.startsWith('data:')
+                    const showImg = isData && isPreviewableImage(attachment.mime_type)
+                    const showPdf = isData && isPreviewablePdf(attachment.mime_type)
+                    return (
+                      <div key={attachment.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-16 h-16 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
+                            <button
+                              className="w-full h-full flex items-center justify-center"
+                              onClick={() => {
+                                if (isData && (showImg || showPdf)) {
+                                  setPreview({ url: attachment.file_path, mime: attachment.mime_type, name: attachment.filename })
+                                }
+                              }}
+                              title="Aperçu"
+                            >
+                              {showImg ? (
+                                <img src={attachment.file_path} alt={attachment.filename} className="w-16 h-16 object-cover" />
+                              ) : showPdf ? (
+                                <FileText className="h-6 w-6 text-red-600" />
+                              ) : (
+                                <Paperclip className="h-4 w-4 text-gray-400" />
+                              )}
+                            </button>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{attachment.filename}</p>
+                            <p className="text-xs text-gray-500">
+                              {(attachment.file_size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            className="text-sm text-red-600 hover:text-red-700"
+                            onClick={() => {
+                              if (!ticketId) return
+                              removeAttachment(ticketId, attachment.id)
+                              addNotification('Pièce jointe supprimée', 'info')
+                            }}
+                          >
+                            Supprimer
+                          </button>
+                          {isData && (
+                            <a
+                              className="text-sm text-primary-600 hover:text-primary-700"
+                              href={attachment.file_path}
+                              download={attachment.filename}
+                            >
+                              Télécharger
+                            </a>
+                          )}
                         </div>
                       </div>
-                      <button className="text-sm text-primary-600 hover:text-primary-700">
-                        Télécharger
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-6">
@@ -319,7 +396,7 @@ export default function TicketDetail() {
                   Envoyer
                 </button>
               </div>
-              <button className="btn-outline w-full">
+              <button className="btn-outline w-full" onClick={() => uploaderApi?.open()}>
                 <Paperclip className="h-4 w-4 mr-2" />
                 Joindre un fichier
               </button>
@@ -337,6 +414,25 @@ export default function TicketDetail() {
         onClose={() => setIsEditModalOpen(false)}
         ticket={ticket || null}
       />
+
+      <Modal
+        isOpen={!!preview}
+        onClose={() => setPreview(null)}
+        title={preview?.name || 'Aperçu'}
+        size="xl"
+      >
+        {preview && (
+          <div className="max-h-[75vh] overflow-auto">
+            {isPreviewableImage(preview.mime) ? (
+              <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-auto mx-auto" />
+            ) : isPreviewablePdf(preview.mime) ? (
+              <iframe title={preview.name} src={preview.url} className="w-full h-[70vh]" />
+            ) : (
+              <div className="text-sm text-gray-600">Aucun aperçu disponible</div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

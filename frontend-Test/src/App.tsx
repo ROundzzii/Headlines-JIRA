@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 import Layout from './components/Layout'
@@ -17,9 +18,22 @@ import Toast from './components/Toast'
 import { useProjectStore } from './stores/dataStore'
 import { useTicketStore } from './stores/dataStore'
 import { useNotificationStore } from './stores/notificationStore'
+import StoreDebug from './components/StoreDebug'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
+  const [showDebug, setShowDebug] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault()
+        setShowDebug((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -48,6 +62,7 @@ function App() {
         )}
       </div>
       <Toast />
+      {showDebug && <StoreDebug />}
       </ThemeProvider>
     </DndProvider>
   )
