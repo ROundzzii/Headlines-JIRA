@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
@@ -32,8 +32,8 @@ export default function TicketDetail() {
   })
 
   const ticketId = useMemo(() => (ticket ? ticket.id : id ? parseInt(id) : undefined), [ticket, id])
-  const { addAttachments, removeAttachment } = useTicketStore()
-  const { upload, errorMap, clearState } = useUpload()
+  const { removeAttachment, addTempAttachment, updateAttachmentProgress, finalizeTempAttachment, failTempAttachment } = useTicketStore()
+  const { upload, errorMap, clearState, progressMap } = useUpload()
   const attachments = useTicketStore((s) =>
     ticketId
       ? (s.attachmentsByTicket[ticketId] ?? ticket?.attachments ?? [])
@@ -41,6 +41,15 @@ export default function TicketDetail() {
   )
   const [uploaderApi, setUploaderApi] = useState<{ open: () => void } | null>(null)
   const [preview, setPreview] = useState<{ url: string; mime: string; name: string } | null>(null)
+  const [batchTempIds, setBatchTempIds] = useState<string[]>([])
+
+  // Synchroniser la progression depuis le hook vers le store
+  useEffect(() => {
+    if (!ticketId) return
+    Object.entries(progressMap).forEach(([tid, p]) => {
+      updateAttachmentProgress(ticketId, tid, p)
+    })
+  }, [progressMap, ticketId, updateAttachmentProgress])
 
   if (isLoading) {
     return (
@@ -183,16 +192,26 @@ export default function TicketDetail() {
                   onReady={(api) => setUploaderApi(api)}
                   onFilesSelected={async (files) => {
                     if (!ticketId) return
-                    const items = await upload(files, ticketId)
+                    setBatchTempIds([])
+                    const items = await upload(files, ticketId, {
+                      onStart: ({ tempId, file, dataUrl }) => {
+                        setBatchTempIds((prev) => [...prev, tempId])
+                        addTempAttachment(ticketId, { tempId, name: file.name, size: file.size, type: file.type, dataUrl: dataUrl })
+                      }
+                    })
                     if (items.length) {
-                      addAttachments(ticketId, items.map(i => ({ name: i.name, size: i.size, type: i.type, dataUrl: i.dataUrl })))
+                      // finaliser ceux qui ont réussi
+                      items.forEach((it) => finalizeTempAttachment(ticketId, it.tempId))
                       addNotification(`${items.length} fichier(s) ajouté(s)`, 'success')
-                      clearState()
                     }
-                    const errs = Object.values(errorMap)
-                    if (errs.length) {
-                      addNotification(errs[0], 'error')
-                    }
+                    // erreurs éventuelles
+                    Object.entries(errorMap).forEach(([tid, msg]) => {
+                      if (batchTempIds.includes(tid)) {
+                        failTempAttachment(ticketId, tid, msg)
+                        addNotification(msg, 'error')
+                      }
+                    })
+                    clearState()
                   }}
                 />
               </div>
@@ -230,6 +249,17 @@ export default function TicketDetail() {
                             <p className="text-xs text-gray-500">
                               {(attachment.file_size / 1024).toFixed(1)} KB
                             </p>
+                            {attachment.isUploading && (
+                              <div className="mt-2 h-2 w-40 bg-gray-200 rounded">
+                                <div
+                                  className="h-2 bg-blue-500 rounded"
+                                  style={{ width: `${attachment.progress ?? 0}%` }}
+                                />
+                              </div>
+                            )}
+                            {attachment.error && (
+                              <p className="text-xs text-red-600 mt-1">{attachment.error}</p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">

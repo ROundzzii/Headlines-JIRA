@@ -58,6 +58,13 @@ interface TicketStore {
     uploadedBy?: number
   ) => void
   removeAttachment: (ticketId: number, attachmentId: number) => void
+  addTempAttachment: (
+    ticketId: number,
+    item: { tempId: string; name: string; size: number; type: string; dataUrl?: string; uploadedBy?: number }
+  ) => void
+  updateAttachmentProgress: (ticketId: number, tempId: string, progress: number) => void
+  finalizeTempAttachment: (ticketId: number, tempId: string) => void
+  failTempAttachment: (ticketId: number, tempId: string, error: string) => void
 }
 
 function loadAttachmentsFromStorage(): Record<number, Attachment[]> {
@@ -158,6 +165,86 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
       const updatedMap = { ...state.attachmentsByTicket, [ticketId]: updated }
       saveAttachmentsToStorage(updatedMap)
 
+      return {
+        attachmentsByTicket: updatedMap,
+        tickets: state.tickets.map(t => (t.id === ticketId ? { ...t, attachments: updated } : t)),
+        currentTicket:
+          state.currentTicket && state.currentTicket.id === ticketId
+            ? { ...state.currentTicket, attachments: updated }
+            : state.currentTicket,
+      }
+    })
+  },
+
+  addTempAttachment: (ticketId, item) => {
+    const now = new Date().toISOString()
+    const tempAttachment: Attachment = {
+      id: Number(`${Date.now()}${Math.floor(Math.random()*1000)}`),
+      tempId: item.tempId,
+      filename: item.name,
+      file_path: item.dataUrl || `local:${item.name}`,
+      file_size: item.size,
+      mime_type: item.type || 'application/octet-stream',
+      ticket_id: ticketId,
+      uploaded_by: item.uploadedBy ?? 1,
+      created_at: now,
+      isUploading: true,
+      progress: 0,
+    }
+    set(state => {
+      const currentList = state.attachmentsByTicket[ticketId] ?? []
+      const updatedMap = { ...state.attachmentsByTicket, [ticketId]: [tempAttachment, ...currentList] }
+      saveAttachmentsToStorage(updatedMap)
+      return {
+        attachmentsByTicket: updatedMap,
+        tickets: state.tickets.map(t => (t.id === ticketId ? { ...t, attachments: updatedMap[ticketId] } : t)),
+        currentTicket:
+          state.currentTicket && state.currentTicket.id === ticketId
+            ? { ...state.currentTicket, attachments: updatedMap[ticketId] }
+            : state.currentTicket,
+      }
+    })
+  },
+
+  updateAttachmentProgress: (ticketId, tempId, progress) => {
+    set(state => {
+      const list = state.attachmentsByTicket[ticketId] ?? []
+      const updated = list.map(a => (a.tempId === tempId ? { ...a, progress } : a))
+      const updatedMap = { ...state.attachmentsByTicket, [ticketId]: updated }
+      return {
+        attachmentsByTicket: updatedMap,
+        tickets: state.tickets.map(t => (t.id === ticketId ? { ...t, attachments: updated } : t)),
+        currentTicket:
+          state.currentTicket && state.currentTicket.id === ticketId
+            ? { ...state.currentTicket, attachments: updated }
+            : state.currentTicket,
+      }
+    })
+  },
+
+  finalizeTempAttachment: (ticketId, tempId) => {
+    set(state => {
+      const list = state.attachmentsByTicket[ticketId] ?? []
+      const updated = list.map(a => (a.tempId === tempId ? { ...a, isUploading: false, progress: 100 } : a))
+      const updatedMap = { ...state.attachmentsByTicket, [ticketId]: updated }
+      saveAttachmentsToStorage(updatedMap)
+      return {
+        attachmentsByTicket: updatedMap,
+        tickets: state.tickets.map(t => (t.id === ticketId ? { ...t, attachments: updated } : t)),
+        currentTicket:
+          state.currentTicket && state.currentTicket.id === ticketId
+            ? { ...state.currentTicket, attachments: updated }
+            : state.currentTicket,
+      }
+    })
+  },
+
+  failTempAttachment: (ticketId, tempId, error) => {
+    set(state => {
+      const list = state.attachmentsByTicket[ticketId] ?? []
+      const updated = list.map(a => (a.tempId === tempId ? { ...a, isUploading: false, error, progress: 0 } : a))
+      const updatedMap = { ...state.attachmentsByTicket, [ticketId]: updated }
+      saveAttachmentsToStorage(updatedMap)
       return {
         attachmentsByTicket: updatedMap,
         tickets: state.tickets.map(t => (t.id === ticketId ? { ...t, attachments: updated } : t)),

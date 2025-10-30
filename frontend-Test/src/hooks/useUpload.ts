@@ -17,6 +17,10 @@ type UseUploadOptions = {
   maxBytes?: number
 }
 
+type UploadCallbacks = {
+  onStart?: (info: { tempId: string; file: File; dataUrl?: string }) => void
+}
+
 export function useUpload(options: UseUploadOptions = {}) {
   const simulateFailureRate = options.simulateFailureRate ?? 0.05
   const allowedMimeTypes = options.allowedMimeTypes ?? DEFAULT_ALLOWED_MIME_TYPES
@@ -35,7 +39,7 @@ export function useUpload(options: UseUploadOptions = {}) {
     })
 
   const upload = useCallback(
-    async (files: File[], ticketId?: number): Promise<UploadItem[]> => {
+    async (files: File[], ticketId?: number, callbacks?: UploadCallbacks): Promise<UploadItem[]> => {
       const results: UploadItem[] = []
       await Promise.all(
         files.map(async (file, idx) => {
@@ -59,6 +63,7 @@ export function useUpload(options: UseUploadOptions = {}) {
 
           // Lecture dataUrl pour preview/persistance locale
           const dataUrl = await toDataUrl(file).catch(() => undefined)
+          callbacks?.onStart?.({ tempId, file, dataUrl })
 
           await new Promise<void>((resolve) => {
             const interval = setInterval(() => {

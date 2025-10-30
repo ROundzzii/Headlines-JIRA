@@ -112,6 +112,11 @@ export interface Attachment {
   ticket_id: number
   uploaded_by: number
   created_at: string
+  // Champs frontend optionnels pour upload local/mock
+  tempId?: string
+  isUploading?: boolean
+  progress?: number // 0..100
+  error?: string
 }
 
 export interface TicketCreate {

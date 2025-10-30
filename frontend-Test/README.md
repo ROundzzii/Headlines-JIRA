@@ -164,13 +164,13 @@ Ce projet est une reproduction du frontend de JIRA, développé avec React + Typ
 
 #### 1. Upload de fichiers 📎
 **Description**: Permettre l'ajout de pièces jointes aux tickets
-- [ ] Component pour upload de fichiers (drag & drop)
-- [ ] Validation des types de fichiers (frontend)
-- [ ] Validation de la taille (frontend)
-- [ ] Preview des fichiers (images, PDF, etc.)
-- [ ] Suppression de fichiers (frontend)
-- [ ] Indicateur de progression d'upload
-- [ ] Gestion des erreurs d'upload
+- [x] Component pour upload de fichiers (drag & drop)
+- [x] Validation des types de fichiers (frontend)
+- [x] Validation de la taille (frontend)
+- [x] Preview des fichiers (images, PDF, etc.)
+- [x] Suppression de fichiers (frontend)
+- [x] Indicateur de progression d'upload
+- [x] Gestion des erreurs d'upload
 
 **Fichiers à créer**:
 - `src/components/FileUploader.tsx`
