@@ -1,4 +1,9 @@
-import { User, Project, Ticket } from '../types'
+import { User, Project, Ticket, Comment } from '../types'
+
+const now = Date.now()
+
+const minutesAgo = (minutes: number): string =>
+  new Date(now - minutes * 60 * 1000).toISOString()
 
 // Données mock pour le mode démo
 export const mockUser: User = {
@@ -106,6 +111,22 @@ export const mockUsers: User[] = [
   }
 ]
 
+const getUser = (id: number): User => {
+  const user = mockUsers.find(item => item.id === id)
+
+  if (!user) {
+    throw new Error(`User ${id} not found in mockUsers`)
+  }
+
+  return user
+}
+
+const sampleImageBase64 =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='
+
+const samplePdfBase64 =
+  'data:application/pdf;base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCgo='
+
 export const mockProjects: Project[] = [
   {
     id: 1,
@@ -153,6 +174,109 @@ export const mockProjects: Project[] = [
   }
 ]
 
+export const mockComments: Comment[] = [
+  {
+    id: 1,
+    content: "J'ai partage la maquette finale. Merci de jeter un oeil @luc.",
+    author_id: 2,
+    ticket_id: 1,
+    created_at: minutesAgo(360),
+    updated_at: minutesAgo(330),
+    author: getUser(2),
+    attachments: [
+      {
+        id: 'comment-att-1',
+        filename: 'wireframe-v2.png',
+        mime_type: 'image/png',
+        size: 20480,
+        data: sampleImageBase64,
+        file_path: sampleImageBase64,
+        uploaded_by: 2,
+        uploaded_at: minutesAgo(360),
+        preview_url: sampleImageBase64
+      }
+    ],
+    mentions: [3],
+    mentions_details: [getUser(3)]
+  },
+  {
+    id: 2,
+    content: `Mise a jour de la spec API.
+
+## Taches
+- Ajuster la route \`POST /auth\`
+- Ajouter un test de regression`,
+    author_id: 3,
+    ticket_id: 1,
+    created_at: minutesAgo(240),
+    updated_at: minutesAgo(120),
+    author: getUser(3),
+    attachments: [
+      {
+        id: 'comment-att-2',
+        filename: 'specifications.pdf',
+        mime_type: 'application/pdf',
+        size: 53248,
+        data: samplePdfBase64,
+        file_path: samplePdfBase64,
+        uploaded_by: 3,
+        uploaded_at: minutesAgo(240)
+      }
+    ],
+    mentions: [2, 4],
+    mentions_details: [getUser(2), getUser(4)]
+  },
+  {
+    id: 3,
+    content: 'Le responsive est pret pour revue. Merci @emma pour les tests.',
+    author_id: 4,
+    ticket_id: 2,
+    created_at: minutesAgo(90),
+    updated_at: minutesAgo(80),
+    author: getUser(4),
+    mentions: [2],
+    mentions_details: [getUser(2)]
+  },
+  {
+    id: 4,
+    content: `Planification de la version 2.0:
+
+## Fonctionnalités principales
+- Système de notifications
+  - Emails automatiques
+  - Notifications push
+  - Badge de compteur
+- API GraphQL
+  - Queries avancées
+  - Mutations optimisées
+  - Subscriptions temps réel
+- Dashboard analytics
+  - Métriques utilisateurs
+  - Rapports hebdomadaires
+  - Export CSV/PDF
+
+## Tâches techniques
+1. Refactoring du code
+   - Nettoyage des dépendances
+   - Optimisation des requêtes
+2. Tests automatisés
+   - Tests unitaires
+   - Tests d'intégration
+   - Tests E2E avec Cypress
+3. Documentation
+   - README mis à jour
+   - Guide API
+   - Tutoriels vidéo`,
+    author_id: 3,
+    ticket_id: 1,
+    created_at: minutesAgo(180),
+    updated_at: minutesAgo(150),
+    author: getUser(3),
+    mentions: [2, 4],
+    mentions_details: [getUser(2), getUser(4)]
+  }
+]
+
 export const mockTickets: Ticket[] = [
   {
     id: 1,
@@ -170,7 +294,7 @@ export const mockTickets: Ticket[] = [
     assignee: mockUser,
     creator: mockUser,
     project: mockProjects[0],
-    comments: [],
+    comments: mockComments.filter(comment => comment.ticket_id === 1),
     attachments: []
   },
   {
@@ -189,7 +313,7 @@ export const mockTickets: Ticket[] = [
     assignee: mockUser,
     creator: mockUser,
     project: mockProjects[1],
-    comments: [],
+    comments: mockComments.filter(comment => comment.ticket_id === 2),
     attachments: []
   },
   {
@@ -208,7 +332,7 @@ export const mockTickets: Ticket[] = [
     assignee: mockUser,
     creator: mockUser,
     project: mockProjects[2],
-    comments: [],
+    comments: mockComments.filter(comment => comment.ticket_id === 3),
     attachments: []
   },
   {
@@ -227,7 +351,7 @@ export const mockTickets: Ticket[] = [
     assignee: mockUser,
     creator: mockUser,
     project: mockProjects[0],
-    comments: [],
+    comments: mockComments.filter(comment => comment.ticket_id === 4),
     attachments: []
   },
   {
@@ -246,7 +370,7 @@ export const mockTickets: Ticket[] = [
     assignee: mockUser,
     creator: mockUser,
     project: mockProjects[2],
-    comments: [],
+    comments: mockComments.filter(comment => comment.ticket_id === 5),
     attachments: []
   }
 ]

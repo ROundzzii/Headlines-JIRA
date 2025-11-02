@@ -94,13 +94,39 @@ export interface Ticket {
   attachments: Attachment[]
 }
 
+export interface CommentAttachment {
+  id: string
+  filename: string
+  mime_type: string
+  size: number
+  data: string
+  file_path?: string
+  uploaded_by: number
+  uploaded_at: string
+  preview_url?: string
+  tempId?: string
+  isUploading?: boolean
+  progress?: number
+  error?: string
+  isNew?: boolean
+}
+
 export interface Comment {
   id: number
   content: string
   author_id: number
   ticket_id: number
   created_at: string
+  updated_at?: string
+  deleted_at?: string
   author: User
+  attachments?: CommentAttachment[]
+  mentions?: number[]
+  mentions_details?: User[]
+  is_editing?: boolean
+  is_saving?: boolean
+  is_deleting?: boolean
+  error?: string
 }
 
 export interface Attachment {

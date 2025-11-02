@@ -19,7 +19,7 @@ interface ProjectFormData {
 }
 
 export default function ProjectSettingsModal({ isOpen, onClose, project }: ProjectSettingsModalProps) {
-  const { updateProject } = useProjectStore()
+  const { fetchProjects } = useProjectStore()
   const { addNotification } = useNotificationStore()
   const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm<ProjectFormData>()
   const [isLoading, setIsLoading] = useState(false)
@@ -37,7 +37,8 @@ export default function ProjectSettingsModal({ isOpen, onClose, project }: Proje
 
     setIsLoading(true)
     try {
-      await updateProject(project.id, data)
+      await projectService.updateProject(project.id, data)
+      await fetchProjects()
       addNotification('Projet modifié avec succès !', 'success')
       onClose()
     } catch (error) {

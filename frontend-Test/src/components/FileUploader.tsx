@@ -71,11 +71,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     e.currentTarget.value = ''
   }, [handleFiles])
 
+  const onReadyRef = useRef(onReady)
   useEffect(() => {
-    if (!onReady) return
+    onReadyRef.current = onReady
+  }, [onReady])
+
+  useEffect(() => {
+    if (!onReadyRef.current) return
     const api = { open: () => { if (!disabled) inputRef.current?.click() } }
-    onReady(api)
-  }, [onReady, disabled])
+    onReadyRef.current(api)
+  }, [disabled])
 
   return (
     <div className={className}>

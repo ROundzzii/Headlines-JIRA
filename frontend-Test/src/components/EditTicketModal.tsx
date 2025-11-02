@@ -63,7 +63,8 @@ export default function EditTicketModal({ isOpen, onClose, ticket }: EditTicketM
       
       const ticketData = {
         ...data,
-        tags: tagsArray
+        tags: tagsArray,
+        assignee_id: data.assignee_id === null ? undefined : data.assignee_id
       }
       
       await ticketService.updateTicket(ticket.id, ticketData)

@@ -1,31 +1,33 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from 'react-query'
 import { Link } from 'react-router-dom'
-import { 
-  ArrowLeft, 
-  Edit, 
-  MessageSquare, 
-  Paperclip, 
-  FileText,
-  Send
+import {
+  ArrowLeft,
+  Edit,
+  MessageSquare,
+  Paperclip,
 } from 'lucide-react'
 import { ticketService } from '../services/ticketService'
 import EditTicketModal from '../components/EditTicketModal'
 import { useNotificationStore } from '../stores/notificationStore'
-import { useTicketStore } from '../stores/dataStore'
+import { useTicketStore, useCommentStore, useUserStore } from '../stores/dataStore'
 import FileUploader from '../components/FileUploader'
 import { isPreviewableImage, isPreviewablePdf } from '../utils/mime'
 import { useUpload } from '../hooks/useUpload'
 import Modal from '../components/Modal'
 import UserSelector from '../components/UserSelector'
 import AssigneeBadge from '../components/AssigneeBadge'
-import { useUserStore } from '../stores/dataStore'
+import CommentEditor, { CommentEditorSubmitPayload } from '../components/CommentEditor'
+import CommentItem from '../components/CommentItem'
+import { useAuthStore } from '../stores/authStore'
+import { Attachment, Comment } from '../types'
+import AttachmentItem, { AttachmentDisplay } from '../components/AttachmentItem'
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>()
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [newComment, setNewComment] = useState('')
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
   const { addNotification } = useNotificationStore()
 
   const { data: ticket, isLoading } = useQuery(['ticket', id], async () => {
@@ -35,6 +37,14 @@ export default function TicketDetail() {
   const queryClient = useQueryClient()
 
   const ticketId = useMemo(() => (ticket ? ticket.id : id ? parseInt(id) : undefined), [ticket, id])
+  const currentUser = useAuthStore(state => state.user)
+  const comments = useCommentStore(state => (ticketId ? state.commentsByTicket[ticketId] ?? [] : []))
+  const addCommentToStore = useCommentStore(state => state.addComment)
+  const updateCommentInStore = useCommentStore(state => state.updateComment)
+  const deleteCommentFromStore = useCommentStore(state => state.deleteComment)
+  const addCommentAttachments = useCommentStore(state => state.addCommentAttachments)
+  const removeCommentAttachment = useCommentStore(state => state.removeCommentAttachment)
+  const setCommentFlags = useCommentStore(state => state.setCommentFlags)
   const { removeAttachment, addTempAttachment, updateAttachmentProgress, finalizeTempAttachment, failTempAttachment, setTicketAssignee } = useTicketStore()
   const { upload, errorMap, clearState, progressMap } = useUpload()
   const users = useUserStore(s => s.users)
@@ -45,7 +55,7 @@ export default function TicketDetail() {
       : (ticket?.attachments ?? [])
   )
   const [uploaderApi, setUploaderApi] = useState<{ open: () => void } | null>(null)
-  const [preview, setPreview] = useState<{ url: string; mime: string; name: string } | null>(null)
+  const [preview, setPreview] = useState<AttachmentDisplay | null>(null)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [batchTempIds, setBatchTempIds] = useState<string[]>([])
 
@@ -60,6 +70,122 @@ export default function TicketDetail() {
   useEffect(() => {
     if (!users.length) fetchUsers()
   }, [users.length, fetchUsers])
+
+  useEffect(() => {
+    if (ticket) {
+      useCommentStore.getState().hydrateFromTickets([ticket])
+    }
+  }, [ticket])
+
+  const handlePreviewAttachment = useCallback((attachment: AttachmentDisplay) => {
+    if (!attachment.previewUrl && !attachment.url) return
+    setPreview(attachment)
+  }, [])
+
+  const handleStartEdit = useCallback((comment: Comment) => {
+    if (!ticketId || (currentUser && comment.author_id !== currentUser.id)) return
+    setEditingCommentId(comment.id)
+    setCommentFlags(ticketId, comment.id, { is_editing: true, error: undefined })
+  }, [ticketId, currentUser, setCommentFlags])
+
+  const handleCancelEdit = useCallback((commentId: number) => {
+    if (!ticketId) return
+    setEditingCommentId(prev => (prev === commentId ? null : prev))
+    setCommentFlags(ticketId, commentId, { is_editing: false, error: undefined })
+  }, [ticketId, setCommentFlags])
+
+  const handleCreateComment = useCallback(async (payload: CommentEditorSubmitPayload) => {
+    if (!ticketId) return
+    if (!currentUser) {
+      addNotification('Vous devez être connecté pour ajouter un commentaire.', 'warning')
+      return
+    }
+
+    addCommentToStore({
+      ticketId,
+      author: currentUser,
+      content: payload.content,
+      attachments: payload.attachmentsToAdd,
+      mentions: payload.mentions,
+    })
+
+    queryClient.setQueryData(['ticket', id], (old: any) =>
+      old ? { ...old, comments: useCommentStore.getState().commentsByTicket[ticketId] } : old
+    )
+
+    addNotification('Commentaire ajouté', 'success')
+  }, [ticketId, currentUser, addCommentToStore, addNotification, queryClient, id])
+
+  const handleUpdateComment = useCallback(async (commentId: number, payload: CommentEditorSubmitPayload) => {
+    if (!ticketId) return
+
+    setCommentFlags(ticketId, commentId, { is_saving: true })
+
+    if (payload.attachmentsToRemove.length) {
+      payload.attachmentsToRemove.forEach(attachmentId => {
+        removeCommentAttachment(ticketId, commentId, attachmentId)
+      })
+    }
+
+    if (payload.attachmentsToAdd.length) {
+      addCommentAttachments(ticketId, commentId, payload.attachmentsToAdd)
+    }
+
+    updateCommentInStore({
+      ticketId,
+      commentId,
+      content: payload.content,
+      mentions: payload.mentions,
+    })
+
+    setCommentFlags(ticketId, commentId, { is_saving: false, is_editing: false })
+    setEditingCommentId(null)
+
+    queryClient.setQueryData(['ticket', id], (old: any) =>
+      old ? { ...old, comments: useCommentStore.getState().commentsByTicket[ticketId] } : old
+    )
+
+    addNotification('Commentaire mis à jour', 'success')
+  }, [ticketId, updateCommentInStore, addCommentAttachments, removeCommentAttachment, setCommentFlags, queryClient, id, addNotification])
+
+  const handleDeleteComment = useCallback((comment: Comment) => {
+    if (!ticketId) return
+    if (currentUser && comment.author_id !== currentUser.id) return
+    const confirmed = window.confirm('Supprimer ce commentaire ?')
+    if (!confirmed) return
+
+    setCommentFlags(ticketId, comment.id, { is_deleting: true })
+    deleteCommentFromStore(ticketId, comment.id)
+    setEditingCommentId(prev => (prev === comment.id ? null : prev))
+
+    queryClient.setQueryData(['ticket', id], (old: any) =>
+      old ? { ...old, comments: useCommentStore.getState().commentsByTicket[ticketId] } : old
+    )
+
+    addNotification('Commentaire supprimé', 'info')
+  }, [ticketId, currentUser, setCommentFlags, deleteCommentFromStore, queryClient, id, addNotification])
+
+  const handleQuoteComment = useCallback((comment: Comment) => {
+    const firstLine = comment.content.split('\n')[0]
+    const quotedText = `> @${comment.author.username} a écrit :\n> ${firstLine}\n> \n`
+    
+    // Stocker le texte de citation pour qu'il soit inséré dans l'éditeur
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('quote-comment', quotedText)
+    }
+    
+    // Scroller vers l'éditeur de commentaire
+    setTimeout(() => {
+      const editor = document.querySelector('[data-comment-editor]') as HTMLElement
+      if (editor) {
+        editor.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        const textarea = editor.querySelector('textarea') as HTMLTextAreaElement
+        if (textarea) {
+          textarea.focus()
+        }
+      }
+    }, 150)
+  }, [])
 
   if (isLoading) {
     return (
@@ -155,39 +281,54 @@ export default function TicketDetail() {
           <div className="card">
             <div className="card-header">
               <h3 className="text-lg font-medium text-gray-900">Commentaires</h3>
+              <p className="text-sm text-gray-500">Suivez les échanges et mentionnez vos coéquipiers avec @nom.</p>
             </div>
-            <div className="card-content">
-              {ticket.comments?.length > 0 ? (
+            <div className="card-content space-y-4">
+              {comments.length > 0 ? (
                 <div className="space-y-4">
-                  {ticket.comments.map((comment: any) => (
-                    <div key={comment.id} className="flex space-x-3">
-                      <div className="flex-shrink-0">
-                        <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
-                          <span className="text-sm font-medium text-primary-700">
-                            {comment.author?.full_name?.charAt(0) || 'U'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <span className="text-sm font-medium text-gray-900">
-                            {comment.author?.full_name || 'Utilisateur inconnu'}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {new Date(comment.created_at).toLocaleString('fr-FR')}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700">{comment.content}</p>
-                      </div>
-                    </div>
+                  {comments.map(comment => (
+                    editingCommentId === comment.id ? (
+                      <CommentEditor
+                        key={comment.id}
+                        mode="edit"
+                        initialValue={comment.content}
+                        initialAttachments={comment.attachments}
+                        onSubmit={(payload) => handleUpdateComment(comment.id, payload)}
+                        onCancel={() => handleCancelEdit(comment.id)}
+                        isSubmitting={Boolean(comment.is_saving)}
+                        className="border border-blue-200 dark:border-blue-700"
+                        currentUserId={currentUser?.id ?? comment.author_id}
+                        ticketId={ticketId}
+                      />
+                    ) : (
+                      <CommentItem
+                        key={comment.id}
+                        comment={comment}
+                        currentUserId={currentUser?.id}
+                        onEdit={handleStartEdit}
+                        onDelete={handleDeleteComment}
+                        onPreview={handlePreviewAttachment}
+                        onQuote={handleQuoteComment}
+                      />
+                    )
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-6">
+                <div className="py-6 text-center">
                   <MessageSquare className="mx-auto h-8 w-8 text-gray-400" />
-                  <p className="mt-2 text-sm text-gray-500">Aucun commentaire</p>
+                  <p className="mt-2 text-sm text-gray-500">Aucun commentaire pour l’instant.</p>
                 </div>
               )}
+
+              <CommentEditor
+                mode="create"
+                onSubmit={handleCreateComment}
+                placeholder="Ajouter un commentaire (Markdown, @mentions, pièces jointes)…"
+                isSubmitting={false}
+                autoFocus={comments.length === 0}
+                currentUserId={currentUser?.id ?? undefined}
+                ticketId={ticketId}
+              />
             </div>
           </div>
 
@@ -228,74 +369,20 @@ export default function TicketDetail() {
 
               {attachments?.length > 0 ? (
                 <div className="space-y-2">
-                  {attachments.map((attachment: any) => {
-                    const isData = typeof attachment.file_path === 'string' && attachment.file_path.startsWith('data:')
-                    const showImg = isData && isPreviewableImage(attachment.mime_type)
-                    const showPdf = isData && isPreviewablePdf(attachment.mime_type)
-                    return (
-                      <div key={attachment.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-16 h-16 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
-                            <button
-                              className="w-full h-full flex items-center justify-center"
-                              onClick={() => {
-                                if (isData && (showImg || showPdf)) {
-                                  setPreview({ url: attachment.file_path, mime: attachment.mime_type, name: attachment.filename })
-                                }
-                              }}
-                              title="Aperçu"
-                            >
-                              {showImg ? (
-                                <img src={attachment.file_path} alt={attachment.filename} className="w-16 h-16 object-cover" />
-                              ) : showPdf ? (
-                                <FileText className="h-6 w-6 text-red-600" />
-                              ) : (
-                                <Paperclip className="h-4 w-4 text-gray-400" />
-                              )}
-                            </button>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{attachment.filename}</p>
-                            <p className="text-xs text-gray-500">
-                              {(attachment.file_size / 1024).toFixed(1)} KB
-                            </p>
-                            {attachment.isUploading && (
-                              <div className="mt-2 h-2 w-40 bg-gray-200 rounded">
-                                <div
-                                  className="h-2 bg-blue-500 rounded"
-                                  style={{ width: `${attachment.progress ?? 0}%` }}
-                                />
-                              </div>
-                            )}
-                            {attachment.error && (
-                              <p className="text-xs text-red-600 mt-1">{attachment.error}</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button
-                            className="text-sm text-red-600 hover:text-red-700"
-                            onClick={() => {
-                              if (!ticketId) return
-                              removeAttachment(ticketId, attachment.id)
-                              addNotification('Pièce jointe supprimée', 'info')
-                            }}
-                          >
-                            Supprimer
-                          </button>
-                          {isData && (
-                            <a
-                              className="text-sm text-primary-600 hover:text-primary-700"
-                              href={attachment.file_path}
-                              download={attachment.filename}
-                            >
-                              Télécharger
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {attachments.map((attachment: any) => (
+                    <AttachmentItem
+                      key={attachment.id ?? attachment.tempId ?? attachment.filename}
+                      source="ticket"
+                      attachment={attachment}
+                      onPreview={handlePreviewAttachment}
+                      onRemove={({ original }) => {
+                        if (!ticketId) return
+                        const attachmentId = (original as Attachment).id
+                        removeAttachment(ticketId, attachmentId)
+                        addNotification('Pièce jointe supprimée', 'info')
+                      }}
+                    />
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-6">
@@ -412,28 +499,6 @@ export default function TicketDetail() {
               <h3 className="text-lg font-medium text-gray-900">Actions</h3>
             </div>
             <div className="card-content space-y-2">
-              <div className="space-y-2">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  className="input w-full text-sm"
-                  placeholder="Ajouter un commentaire..."
-                  rows={3}
-                />
-                <button 
-                  className="btn-outline w-full"
-                  onClick={async () => {
-                    if (newComment.trim()) {
-                      addNotification('Commentaire ajouté (mode démo)', 'info')
-                      setNewComment('')
-                    }
-                  }}
-                  disabled={!newComment.trim()}
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Envoyer
-                </button>
-              </div>
               <button className="btn-outline w-full" onClick={() => uploaderApi?.open()}>
                 <Paperclip className="h-4 w-4 mr-2" />
                 Joindre un fichier
@@ -455,15 +520,23 @@ export default function TicketDetail() {
       <Modal
         isOpen={!!preview}
         onClose={() => setPreview(null)}
-        title={preview?.name || 'Aperçu'}
+        title={preview?.filename || 'Aperçu'}
         size="xl"
       >
         {preview && (
           <div className="max-h-[75vh] overflow-auto">
-            {isPreviewableImage(preview.mime) ? (
-              <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-auto mx-auto" />
-            ) : isPreviewablePdf(preview.mime) ? (
-              <iframe title={preview.name} src={preview.url} className="w-full h-[70vh]" />
+            {isPreviewableImage(preview.mimeType) ? (
+              <img
+                src={preview.previewUrl || preview.url}
+                alt={preview.filename}
+                className="max-h-[70vh] w-auto mx-auto"
+              />
+            ) : isPreviewablePdf(preview.mimeType) ? (
+              <iframe
+                title={preview.filename}
+                src={preview.previewUrl || preview.url}
+                className="w-full h-[70vh]"
+              />
             ) : (
               <div className="text-sm text-gray-600">Aucun aperçu disponible</div>
             )}

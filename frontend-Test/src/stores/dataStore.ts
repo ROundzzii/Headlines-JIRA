@@ -1,9 +1,10 @@
 import { create } from 'zustand'
-import { Attachment, Project, Ticket, User } from '../types'
+import { devtools } from 'zustand/middleware'
+import { Attachment, Comment, CommentAttachment, Project, Ticket, User } from '../types'
 import { projectService } from '../services/projectService'
 import { ticketService } from '../services/ticketService'
 import { userService } from '../services/userService'
-import { devtools } from 'zustand/middleware'
+import { mockComments, mockUsers } from '../data/mockData'
 
 interface ProjectStore {
   projects: Project[]
@@ -95,6 +96,380 @@ export const useUserStore = create<UserStore>()(
 )
 
 
+const COMMENTS_STORAGE_KEY = 'commentsByTicket'
+
+export type CommentAttachmentInput = {
+  id?: string
+  filename: string
+  mime_type: string
+  size: number
+  data: string
+  preview_url?: string
+  uploaded_by?: number
+  uploaded_at?: string
+  tempId?: string
+  isUploading?: boolean
+  progress?: number
+  error?: string
+}
+
+type CommentAttachmentLike = CommentAttachment | CommentAttachmentInput
+
+export interface CreateCommentInput {
+  ticketId: number
+  author: User
+  content: string
+  attachments?: CommentAttachmentInput[]
+  mentions?: number[]
+}
+
+export interface UpdateCommentInput {
+  ticketId: number
+  commentId: number
+  content?: string
+  attachments?: CommentAttachmentLike[]
+  mentions?: number[]
+}
+
+export type CommentFlagUpdate = Partial<Pick<Comment, 'is_editing' | 'is_saving' | 'is_deleting' | 'error'>>
+
+const generateCommentId = () => Number(`${Date.now()}${Math.floor(Math.random() * 1000)}`)
+
+const generateCommentAttachmentId = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `comment-attachment-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+
+const getUsersSnapshot = (): User[] => {
+  const { users } = useUserStore.getState()
+  return users.length ? users : mockUsers
+}
+
+const resolveMentionDetails = (mentionIds: number[] = []): User[] => {
+  if (!mentionIds.length) return []
+  const snapshot = getUsersSnapshot()
+  return mentionIds
+    .map(id => snapshot.find(user => user.id === id))
+    .filter((user): user is User => Boolean(user))
+}
+
+const normalizeAttachment = (
+  attachment: CommentAttachmentLike,
+  fallbackUploader: number
+): CommentAttachment => {
+  const {
+    tempId,
+    isUploading,
+    progress,
+    error,
+    file_path,
+    isNew,
+  } = attachment as CommentAttachment
+
+  const mimeType = attachment.mime_type || 'application/octet-stream'
+  const rawData = (attachment as CommentAttachment).data ?? (attachment as CommentAttachmentInput).data ?? ''
+  const dataValue = rawData || (attachment as CommentAttachment).preview_url || ''
+  const filePathValue = file_path ?? (dataValue ? dataValue : undefined)
+  const previewSource = attachment.preview_url ??
+    (mimeType.startsWith('image/') ? (filePathValue ?? dataValue) : undefined)
+
+  return {
+    id: attachment.id ?? generateCommentAttachmentId(),
+    filename: attachment.filename,
+    mime_type: mimeType,
+    size: attachment.size,
+    data: dataValue,
+    file_path: filePathValue,
+    uploaded_by: attachment.uploaded_by ?? fallbackUploader,
+    uploaded_at: attachment.uploaded_at ?? new Date().toISOString(),
+    preview_url: previewSource,
+    tempId,
+    isUploading,
+    progress,
+    error,
+    isNew: Boolean(isNew),
+  }
+}
+
+const sortComments = (comments: Comment[]): Comment[] =>
+  [...comments].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
+
+const normalizeComment = (comment: Comment): Comment => {
+  const mentions = comment.mentions ?? comment.mentions_details?.map(user => user.id) ?? []
+  const attachments = (comment.attachments ?? []).map(att =>
+    normalizeAttachment(att, att.uploaded_by ?? comment.author_id)
+  )
+
+  return {
+    ...comment,
+    attachments,
+    mentions,
+    mentions_details: resolveMentionDetails(mentions),
+    is_editing: Boolean(comment.is_editing),
+    is_saving: Boolean(comment.is_saving),
+    is_deleting: Boolean(comment.is_deleting),
+    error: comment.error ?? undefined,
+  }
+}
+
+const normalizeCommentsMap = (
+  source: Record<number | string, Comment[]>
+): Record<number, Comment[]> => {
+  return Object.entries(source).reduce((acc, [key, comments]) => {
+    const ticketId = Number(key)
+    acc[ticketId] = sortComments(comments.map(normalizeComment))
+    return acc
+  }, {} as Record<number, Comment[]>)
+}
+
+const buildMockCommentsMap = (): Record<number, Comment[]> => {
+  const grouped = mockComments.reduce((acc, comment) => {
+    const ticketId = comment.ticket_id
+    acc[ticketId] = [...(acc[ticketId] ?? []), comment]
+    return acc
+  }, {} as Record<number, Comment[]>)
+
+  return normalizeCommentsMap(grouped)
+}
+
+const loadCommentsFromStorage = (): Record<number, Comment[]> => {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    const raw = window.localStorage.getItem(COMMENTS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<number | string, Comment[]>
+    return normalizeCommentsMap(parsed)
+  } catch (error) {
+    console.warn('Unable to load comments from storage:', error)
+    return {}
+  }
+}
+
+const saveCommentsToStorage = (map: Record<number, Comment[]>) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(COMMENTS_STORAGE_KEY, JSON.stringify(map))
+  } catch (error) {
+    console.warn('Unable to persist comments to storage:', error)
+  }
+}
+
+const getInitialComments = (): Record<number, Comment[]> => {
+  const stored = loadCommentsFromStorage()
+  if (Object.keys(stored).length > 0) {
+    return stored
+  }
+  return buildMockCommentsMap()
+}
+
+let syncTicketComments: (ticketId: number, comments: Comment[]) => void = () => {}
+
+interface CommentStore {
+  commentsByTicket: Record<number, Comment[]>
+  hydrateFromTickets: (tickets: Ticket[]) => void
+  getComments: (ticketId: number) => Comment[]
+  addComment: (input: CreateCommentInput) => Comment
+  updateComment: (input: UpdateCommentInput) => void
+  deleteComment: (ticketId: number, commentId: number) => void
+  addCommentAttachments: (
+    ticketId: number,
+    commentId: number,
+    attachments: CommentAttachmentInput[]
+  ) => void
+  removeCommentAttachment: (ticketId: number, commentId: number, attachmentId: string) => void
+  setCommentFlags: (ticketId: number, commentId: number, flags: CommentFlagUpdate) => void
+  reset: () => void
+}
+
+export const useCommentStore = create<CommentStore>()(
+  devtools(
+    (set, get) => ({
+      commentsByTicket: getInitialComments(),
+
+      hydrateFromTickets: (tickets: Ticket[]) => {
+        const fromTickets = normalizeCommentsMap(
+          tickets.reduce((acc, ticket) => {
+            acc[ticket.id] = ticket.comments ?? []
+            return acc
+          }, {} as Record<number, Comment[]>)
+        )
+
+        set(state => {
+          const merged: Record<number, Comment[]> = { ...fromTickets }
+          Object.entries(state.commentsByTicket).forEach(([key, comments]) => {
+            merged[Number(key)] = sortComments(comments.map(normalizeComment))
+          })
+          saveCommentsToStorage(merged)
+          return { commentsByTicket: merged }
+        })
+      },
+
+      getComments: (ticketId: number) => get().commentsByTicket[ticketId] ?? [],
+
+      addComment: ({ ticketId, author, content, attachments = [], mentions = [] }) => {
+        const timestamp = new Date().toISOString()
+        const builtAttachments = attachments.map(att =>
+          normalizeAttachment(att, att.uploaded_by ?? author.id)
+        )
+
+        const newComment = normalizeComment({
+          id: generateCommentId(),
+          content,
+          author_id: author.id,
+          ticket_id: ticketId,
+          created_at: timestamp,
+          updated_at: timestamp,
+          author,
+          attachments: builtAttachments,
+          mentions,
+          mentions_details: resolveMentionDetails(mentions),
+        })
+
+        set(state => {
+          const current = state.commentsByTicket[ticketId] ?? []
+          const updated = sortComments([...current, newComment])
+          const next = { ...state.commentsByTicket, [ticketId]: updated }
+          saveCommentsToStorage(next)
+          syncTicketComments(ticketId, updated)
+          return { commentsByTicket: next }
+        })
+
+        return newComment
+      },
+
+      updateComment: ({ ticketId, commentId, content, attachments, mentions }) => {
+        set(state => {
+          const current = state.commentsByTicket[ticketId] ?? []
+
+          const updated = current.map(comment => {
+            if (comment.id !== commentId) return comment
+
+            const nextMentions = mentions ?? comment.mentions ?? []
+            const nextAttachments =
+              attachments !== undefined
+                ? attachments.map(att =>
+                    normalizeAttachment(
+                      att as CommentAttachmentLike,
+                      (att as CommentAttachmentLike).uploaded_by ?? comment.author_id
+                    )
+                  )
+                : comment.attachments ?? []
+
+            return normalizeComment({
+              ...comment,
+              content: content ?? comment.content,
+              attachments: nextAttachments,
+              mentions: nextMentions,
+              updated_at: new Date().toISOString(),
+              is_editing: false,
+              is_saving: false,
+              error: undefined,
+            })
+          })
+
+          const sorted = sortComments(updated)
+          const next = { ...state.commentsByTicket, [ticketId]: sorted }
+          saveCommentsToStorage(next)
+          syncTicketComments(ticketId, sorted)
+          return { commentsByTicket: next }
+        })
+      },
+
+      deleteComment: (ticketId: number, commentId: number) => {
+        set(state => {
+          const current = state.commentsByTicket[ticketId] ?? []
+          const updated = current.filter(comment => comment.id !== commentId)
+          const next = { ...state.commentsByTicket, [ticketId]: updated }
+          saveCommentsToStorage(next)
+          syncTicketComments(ticketId, updated)
+          return { commentsByTicket: next }
+        })
+      },
+
+      addCommentAttachments: (ticketId, commentId, attachmentsInput) => {
+        set(state => {
+          const current = state.commentsByTicket[ticketId] ?? []
+
+          const updated = current.map(comment => {
+            if (comment.id !== commentId) return comment
+            const built = attachmentsInput.map(att =>
+              normalizeAttachment(att, att.uploaded_by ?? comment.author_id)
+            )
+
+            return normalizeComment({
+              ...comment,
+              attachments: [...(comment.attachments ?? []), ...built],
+              updated_at: new Date().toISOString(),
+            })
+          })
+
+          const sorted = sortComments(updated)
+          const next = { ...state.commentsByTicket, [ticketId]: sorted }
+          saveCommentsToStorage(next)
+          syncTicketComments(ticketId, sorted)
+          return { commentsByTicket: next }
+        })
+      },
+
+      removeCommentAttachment: (ticketId, commentId, attachmentId) => {
+        set(state => {
+          const current = state.commentsByTicket[ticketId] ?? []
+
+          const updated = current.map(comment => {
+            if (comment.id !== commentId) return comment
+
+            const remaining = (comment.attachments ?? []).filter(
+              att => att.id !== attachmentId && att.tempId !== attachmentId
+            )
+
+            return normalizeComment({
+              ...comment,
+              attachments: remaining,
+              updated_at: new Date().toISOString(),
+            })
+          })
+
+          const sorted = sortComments(updated)
+          const next = { ...state.commentsByTicket, [ticketId]: sorted }
+          saveCommentsToStorage(next)
+          syncTicketComments(ticketId, sorted)
+          return { commentsByTicket: next }
+        })
+      },
+
+      setCommentFlags: (ticketId, commentId, flags) => {
+        set(state => {
+          const current = state.commentsByTicket[ticketId] ?? []
+
+          const updated = current.map(comment =>
+            comment.id === commentId ? { ...comment, ...flags } : comment
+          )
+
+          const next = { ...state.commentsByTicket, [ticketId]: updated }
+          saveCommentsToStorage(next)
+          return { commentsByTicket: next }
+        })
+      },
+
+      reset: () => {
+        const initial = getInitialComments()
+        saveCommentsToStorage(initial)
+        set({ commentsByTicket: initial })
+      },
+    }),
+    { name: 'CommentStore' }
+  )
+)
+
+
 function loadAttachmentsFromStorage(): Record<number, Attachment[]> {
   try {
     const raw = localStorage.getItem('attachmentsByTicket')
@@ -123,9 +498,14 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
     try {
       const tickets = await ticketService.getTickets(projectId)
       const map = get().attachmentsByTicket
+      const commentStore = useCommentStore.getState()
+      commentStore.hydrateFromTickets(tickets)
+      const commentsMap = useCommentStore.getState().commentsByTicket
+
       const merged = tickets.map(t => ({
         ...t,
         attachments: map[t.id] ?? t.attachments ?? [],
+        comments: commentsMap[t.id] ?? t.comments ?? [],
       }))
       set({ tickets: merged, isLoading: false })
     } catch (error) {
@@ -139,7 +519,17 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   },
 
   setCurrentTicket: (ticket: Ticket | null) => {
-    set({ currentTicket: ticket })
+    if (!ticket) {
+      set({ currentTicket: null })
+      return
+    }
+
+    const comments = useCommentStore.getState().commentsByTicket[ticket.id] ?? ticket.comments ?? []
+    const attachments = get().attachmentsByTicket[ticket.id] ?? ticket.attachments ?? []
+
+    set({
+      currentTicket: { ...ticket, comments, attachments },
+    })
   },
 
   updateTicketStatus: async (ticketId: number, status: string) => {
@@ -309,6 +699,18 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   },
 }))
 
+syncTicketComments = (ticketId, comments) => {
+  useTicketStore.setState(state => ({
+    tickets: state.tickets.map(ticket =>
+      ticket.id === ticketId ? { ...ticket, comments } : ticket
+    ),
+    currentTicket:
+      state.currentTicket && state.currentTicket.id === ticketId
+        ? { ...state.currentTicket, comments }
+        : state.currentTicket,
+  }))
+}
+
 interface DashboardStats {
   totalProjects: number
   totalTickets: number
@@ -357,6 +759,7 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
 }))
 
 
+// @ts-expect-error - process is available in build environment
 if (process.env.NODE_ENV === 'development') {
   (window as any).stores = {
     projects: useProjectStore,
